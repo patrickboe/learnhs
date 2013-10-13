@@ -33,6 +33,7 @@ data LispVal = Atom String
              | Number Integer
              | String String
              | Bool Bool
+             | Character Char
 
 instance Show LispVal where
   show (Atom s) = show s
@@ -40,7 +41,8 @@ instance Show LispVal where
   show (DottedList xs e) = "(" ++ (intercalate " , " (map show xs)) ++ " . " ++ (show e) ++ ")"
   show (Number n) = show n
   show (String s) = s
-  show (Bool b) = show b
+  show (Bool b) = '#' : (if b then "t" else "f")
+  show (Character c) = "#\\" ++ [c]
 
 escapedChar :: Stream s m Char => ParsecT s u m Char
 escapedChar = do e <- oneOf "nrt\\\""
@@ -64,14 +66,19 @@ parseString = do char '"'
                  return $ String x
 
 parsePrefixedVal :: Stream s m Char => ParsecT s u m LispVal
-parsePrefixedVal = do prefix <- oneOf "tfbodx"
-                      if prefix `elem` "tf"
-                        then return $ Bool (prefix=='t')
-                        else parseRadix $ case prefix of
-                                            'd' -> readDec
-                                            'b' -> readBin
-                                            'x' -> readHex
-                                            'o' -> readOct
+parsePrefixedVal = do prefix <- oneOf "tfbodx\\"
+                      case prefix of
+                        't'       -> return $ Bool True
+                        'f'       -> return $ Bool False
+                        '\\'      -> parseCharacter
+                        otherwise -> parseRadix $ case prefix of
+                                                    'd' -> readDec
+                                                    'b' -> readBin
+                                                    'x' -> readHex
+                                                    'o' -> readOct
+
+parseCharacter :: Stream s m Char => ParsecT s u m LispVal
+parseCharacter = liftM Character $ anyChar
 
 parseAtom :: Stream s m Char => ParsecT s u m LispVal
 parseAtom = do first <- letter <|> symbol
