@@ -15,9 +15,9 @@ spaces :: Stream s m Char => ParsecT s u m ()
 spaces = skipMany1 space
 
 parseExpr :: Stream s m Char => ParsecT s u m LispVal
-parseExpr = parseNumber
+parseExpr = parseAtom
         <|> parseString
-        <|> parseAtom
+        <|> parseDecimal
 
 readBin :: (Eq a, Num a) => ReadS a
 readBin = readInt 2 (`elem` "01") digitToInt
@@ -63,31 +63,32 @@ parseString = do char '"'
                  char '"'
                  return $ String x
 
+parsePrefixedVal :: Stream s m Char => ParsecT s u m LispVal
+parsePrefixedVal = do prefix <- oneOf "tfbodx"
+                      if prefix `elem` "tf"
+                        then return $ Bool (prefix=='t')
+                        else parseRadix $ case prefix of
+                                            'd' -> readDec
+                                            'b' -> readBin
+                                            'x' -> readHex
+                                            'o' -> readOct
+
 parseAtom :: Stream s m Char => ParsecT s u m LispVal
 parseAtom = do first <- letter <|> symbol
-               rest <- many (letter <|> digit <|> symbol)
-               let atom = first : rest
-               return $ case atom of
-                           "#t" -> Bool True
-                           "#f" -> Bool False
-                           otherwise -> Atom atom
+               case first of
+                 '#' -> parsePrefixedVal
+                 otherwise -> do
+                   rest <- many (letter <|> digit <|> symbol)
+                   return $ Atom (first : rest)
 
-parseNumber :: Stream s m Char => ParsecT s u m LispVal
-parseNumber = parseDecimal <|> parseRadix
+parseBool :: Stream s m Char => ParsecT s u m LispVal
+parseBool = liftM (Bool . (== 't')) $ oneOf "tf"
 
 parseDecimal :: Stream s m Char => ParsecT s u m LispVal
-parseDecimal = liftM (Number . read) $ many1 digit
+parseDecimal = parseRadix readDec
 
-parseRadix :: Stream s m Char => ParsecT s u m LispVal
-parseRadix = do char '#'
-                c <- oneOf "bodx"
-                ns <- many1 digit
-                let reader = fst . head . (case c of
-                                             'd' -> readDec
-                                             'b' -> readBin
-                                             'x' -> readHex
-                                             'o' -> readOct)
-                return $ Number $ reader ns
+parseRadix :: Stream s m Char => ReadS Integer -> ParsecT s u m LispVal
+parseRadix readf = liftM (Number . fst . head . readf) $ many1 digit
 
 main :: IO ()
 main = do args <- getArgs
