@@ -28,15 +28,24 @@ data LispVal = Atom String
              | String String
              | Bool Bool
 
-nonquote :: Stream s m Char => ParsecT s u m Char
-nonquote = do c <- noneOf "\""
-              return case c of
-                       '\' -> char '"'
-                       otherwise -> return c
+escapedChar :: Stream s m Char => ParsecT s u m Char
+escapedChar = do e <- oneOf "nrt\\\""
+                 return $ case e of
+                            '\\' -> '\\'
+                            'n'  -> '\n'
+                            'r'  -> '\r'
+                            't'  -> '\t'
+                            '"'  -> '"'
+
+stringChar :: Stream s m Char => ParsecT s u m Char
+stringChar = do c <- noneOf "\""
+                if c == '\\'
+                  then escapedChar
+                  else return c
 
 parseString :: Stream s m Char => ParsecT s u m LispVal
 parseString = do char '"'
-                 x <- many (noneOf "\"")
+                 x <- many stringChar
                  char '"'
                  return $ String x
 
