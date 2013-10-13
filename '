@@ -6,7 +6,6 @@ import System.Environment (getArgs)
 import Text.Parsec hiding (spaces)
 import Numeric
 import Data.Char
-import Data.List
 
 symbol :: Stream s m Char => ParsecT s u m Char
 symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
@@ -15,17 +14,16 @@ spaces :: Stream s m Char => ParsecT s u m ()
 spaces = skipMany1 space
 
 parseExpr :: Stream s m Char => ParsecT s u m LispVal
-parseExpr = parseNumber
+parseExpr = parseAtom
         <|> parseString
-        <|> parseAtom
+        <|> parseNumber
 
-readBin :: (Eq a, Num a) => ReadS a
-readBin = readInt 2 (`elem` "01") digitToInt
+readBin s = readInt 2 (`elem` "01") ord
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
     Left err -> "No match: " ++ show err
-    Right x -> "Found value : " ++ show x
+    Right _ -> "Found value"
 
 data LispVal = Atom String
              | List [LispVal]
@@ -33,14 +31,6 @@ data LispVal = Atom String
              | Number Integer
              | String String
              | Bool Bool
-
-instance Show LispVal where
-  show (Atom s) = show s
-  show (List l) = "(" ++ (intercalate " , " (map show l)) ++ ")"
-  show (DottedList xs e) = "(" ++ (intercalate " , " (map show xs)) ++ " . " ++ (show e) ++ ")"
-  show (Number n) = show n
-  show (String s) = s
-  show (Bool b) = show b
 
 escapedChar :: Stream s m Char => ParsecT s u m Char
 escapedChar = do e <- oneOf "nrt\\\""
@@ -66,7 +56,7 @@ parseString = do char '"'
 parseAtom :: Stream s m Char => ParsecT s u m LispVal
 parseAtom = do first <- letter <|> symbol
                rest <- many (letter <|> digit <|> symbol)
-               let atom = first : rest
+               let atom = [first] ++ rest
                return $ case atom of
                            "#t" -> Bool True
                            "#f" -> Bool False
@@ -84,10 +74,9 @@ parseRadix = do char '#'
                 ns <- many1 digit
                 let reader = fst . head . (case c of
                                              'd' -> readDec
-                                             'b' -> readBin
                                              'x' -> readHex
                                              'o' -> readOct)
-                return $ Number $ reader ns
+                return (Number (reader ns))
 
 main :: IO ()
 main = do args <- getArgs
